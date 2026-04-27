@@ -13,7 +13,9 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-const socket = io("${import.meta.env.VITE_API_URL}");
+const socket = io(import.meta.env.VITE_API_URL, {
+  transports: ["websocket"],
+});
 
 // icons (UNCHANGED)
 const pulseIcon = L.divIcon({
