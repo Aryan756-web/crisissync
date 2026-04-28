@@ -1,3 +1,4 @@
+// (imports remain SAME — no change)
 import { useEffect, useState } from "react";
 import io from "socket.io-client";
 import toast from "react-hot-toast";
@@ -12,7 +13,9 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-// icons
+
+
+// icons (UNCHANGED)
 const pulseIcon = L.divIcon({
   className: "pulse-marker",
   html: `<div class="pulse"></div>`,
@@ -51,34 +54,41 @@ function Dashboard() {
 
   const user = JSON.parse(localStorage.getItem("user"));
 
-  // ✅ SOCKET (FIXED)
+  const total = emergencies.length;
+  const pending = emergencies.filter(e => e.status === "pending").length;
+  const resolved = emergencies.filter(e => e.status === "resolved").length;
+
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_API_URL, {
-      transports: ["websocket"],
-    });
+  const socket = io(import.meta.env.VITE_API_URL, {
+    transports: ["websocket"],
+    reconnectionAttempts: 3,
+  });
 
-    socket.on("connect", () => {
-      console.log("Connected:", socket.id);
-    });
+  socket.on("connect", () => {
+    console.log("Connected:", socket.id);
+  });
 
-    socket.on("newEmergency", (data) => {
-      setEmergencies((prev) => [data, ...prev]);
-      setPosition([data.location.lat, data.location.lng]);
-      setShouldFocus(true);
-      toast.error("🚨 New Emergency Triggered");
-    });
+  socket.on("newEmergency", (data) => {
+    setEmergencies((prev) => {
+    // avoid duplicate entries
+    if (prev.some((e) => e._id === data._id)) return prev;
+    return [data, ...prev];
+  });
+    setPosition([data.location.lat, data.location.lng]);
+    setShouldFocus(true);
+    toast.error("🚨 New Emergency Triggered");
+  });
 
-    socket.on("emergencyUpdated", (updated) => {
-      setEmergencies((prev) =>
-        prev.map((e) => (e._id === updated._id ? updated : e))
-      );
-      toast.success("✅ Emergency Resolved");
-    });
+  socket.on("emergencyUpdated", (updated) => {
+    setEmergencies((prev) =>
+      prev.map((e) => (e._id === updated._id ? updated : e))
+    );
+    toast.success("✅ Emergency Resolved");
+  });
 
-    return () => socket.disconnect();
-  }, []);
+  return () => socket.disconnect();
+}, []);
 
-  // focus reset
   useEffect(() => {
     if (shouldFocus) {
       const timer = setTimeout(() => setShouldFocus(false), 1500);
@@ -86,7 +96,6 @@ function Dashboard() {
     }
   }, [shouldFocus]);
 
-  // fetch data
   useEffect(() => {
     const fetchData = async () => {
       const res = await API.get("/emergency");
@@ -147,10 +156,6 @@ function Dashboard() {
     }
   };
 
-  const total = emergencies.length;
-  const pending = emergencies.filter(e => e.status === "pending").length;
-  const resolved = emergencies.filter(e => e.status === "resolved").length;
-
   return (
     <div className="bg-gradient-to-br from-gray-900 via-black to-gray-800 min-h-screen text-white">
 
@@ -201,10 +206,21 @@ function Dashboard() {
 
         {/* MAP */}
         <div className="w-full md:w-2/3 p-3 md:p-4">
+          {selected && (
+            <div className="flex justify-center mb-3">
+              <button
+                onClick={() => setSelected(null)}
+                className="bg-gray-700 px-3 py-2 rounded-lg text-sm"
+              >
+                Clear Focus
+              </button>
+            </div>
+          )}
+
           <div className="mb-3 flex justify-center">
             <button
               onClick={sendSOS}
-              className="bg-gradient-to-r from-red-500 to-red-700 px-4 py-2 md:px-6 md:py-3 rounded-xl"
+              className="bg-gradient-to-r from-red-500 to-red-700 px-4 py-2 md:px-6 md:py-3 rounded-xl text-sm md:text-base"
             >
               🚨 Trigger Emergency
             </button>
@@ -216,7 +232,6 @@ function Dashboard() {
             className="h-[300px] md:h-[500px] rounded-xl"
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-
             <ChangeMapView
               center={
                 selected
@@ -228,44 +243,152 @@ function Dashboard() {
 
             {emergencies
               .filter((e) => e.status === "pending")
-              .map((emg) => (
-                <Marker
-                  key={emg._id}
-                  position={[emg.location.lat, emg.location.lng]}
-                  icon={pulseIcon}
-                >
-                  <Popup>{emg.user?.name}</Popup>
-                </Marker>
-              ))}
+              .map((emg) => {
+                let icon = pulseIcon;
+                if (selected?._id === emg._id) icon = activeIcon;
+                else if (selected) icon = dimIcon;
+
+                return (
+                  <Marker
+                    key={emg._id}
+                    position={[emg.location.lat, emg.location.lng]}
+                    icon={icon}
+                  >
+                    <Popup>{emg.user?.name}</Popup>
+                  </Marker>
+                );
+              })}
           </MapContainer>
         </div>
 
         {/* PANEL */}
         <div className="w-full md:w-1/3 backdrop-blur-lg bg-white/10 p-3 md:p-4">
-          <h2 className="text-lg md:text-xl mb-4">🚨 Emergencies</h2>
+          <h2 className="text-lg md:text-xl mb-3 md:mb-4">🚨 Emergencies</h2>
 
-          <div className="max-h-[400px] overflow-y-auto">
+          <div className="max-h-[300px] md:max-h-[400px] overflow-y-auto pr-1">
             {emergencies.map((emg) => (
               <div
                 key={emg._id}
-                className="p-3 mb-3 bg-white/10 rounded-xl"
+                onClick={() => {
+                  setSelected(emg);
+                  setPosition([emg.location.lat, emg.location.lng]);
+                  setShouldFocus(true);
+                }}
+                className={`p-3 mb-3 rounded-xl cursor-pointer transition ${
+                  !selected
+                    ? "bg-white/10 hover:bg-white/20"
+                    : selected._id === emg._id
+                    ? "bg-red-500/20 border border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.6)]"
+                    : "bg-white/5 opacity-40"
+                }`}
               >
-                <p>{emg.user?.name}</p>
-                <p className="text-xs">{emg.user?.email}</p>
+                <p className="font-semibold text-sm md:text-base">{emg.user?.name}</p>
+                <p className="text-xs md:text-sm text-gray-300">{emg.user?.email}</p>
 
-                {user?.role === "admin" && emg.status === "pending" && (
-                  <button
-                    onClick={() => handleResolve(emg._id)}
-                    className="bg-green-600 mt-2 px-3 py-1 rounded"
-                  >
-                    Resolve
-                  </button>
-                )}
+                <span className={`mt-2 inline-block px-2 py-1 md:px-3 md:py-1 rounded-full text-[10px] md:text-xs ${
+                  emg.status === "resolved"
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-yellow-500/20 text-yellow-400"
+                }`}>
+                  {emg.status.toUpperCase()}
+                </span>
               </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* ================= INTRO ================= */}
+      <div className="px-4 md:px-10 py-10 bg-black/40 border-t border-white/10">
+        <h2 className="text-2xl md:text-3xl font-bold mb-6 text-center">
+          🚑 About CrisisSync
+        </h2>
+
+        <div className="grid md:grid-cols-3 gap-6 text-center">
+          <div className="bg-white/5 p-5 rounded-xl">
+            <h3 className="font-semibold mb-2">⚡ Instant Alerts</h3>
+            <p className="text-sm text-gray-400">
+              Trigger emergencies instantly and notify authorities.
+            </p>
+          </div>
+
+          <div className="bg-white/5 p-5 rounded-xl">
+            <h3 className="font-semibold mb-2">📍 Live Location</h3>
+            <p className="text-sm text-gray-400">
+              Share precise GPS location for faster response.
+            </p>
+          </div>
+
+          <div className="bg-white/5 p-5 rounded-xl">
+            <h3 className="font-semibold mb-2">🛡️ Admin Control</h3>
+            <p className="text-sm text-gray-400">
+              Monitor and resolve emergencies efficiently.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ================= FOOTER ================= */}
+      <footer className="bg-black border-t border-white/10 px-4 md:px-10 py-10 text-gray-400">
+        <div className="grid md:grid-cols-3 gap-8">
+          <div>
+            <h3 className="text-white font-bold mb-2">🚨 CrisisSync</h3>
+            <p className="text-sm">
+              Real-time emergency response system.
+            </p>
+          </div>
+
+          <div>
+            <h4 className="text-white font-semibold mb-3">Links</h4>
+            <ul className="space-y-2 text-sm">
+              <li>Home</li>
+              <li>Dashboard</li>
+              <li>FAQs</li>
+              <li>Support</li>
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-white font-semibold mb-3">Contact</h4>
+            <p className="text-sm">support@crisissync.com</p>
+            <p className="text-sm">+91 98765 43210</p>
+            <p className="text-sm">Mumbai, India</p>
+          </div>
+        </div>
+
+        <div className="text-center text-xs mt-8 border-t border-white/10 pt-4">
+          © {new Date().getFullYear()} CrisisSync
+        </div>
+      </footer>
+
+      {/* MODAL (UNCHANGED) */}
+      {selected && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-[9999] pointer-events-none">
+          <div className="bg-gray-900 p-5 md:p-6 rounded-xl w-[90%] md:w-96 pointer-events-auto">
+            <h2>🚨 Emergency Details</h2>
+            <p><b>Name:</b> {selected.user?.name}</p>
+            <p><b>Email:</b> {selected.user?.email}</p>
+            <p><b>Status:</b> {selected.status}</p>
+
+            {user?.role === "admin" &&
+              selected.status === "pending" && (
+                <button
+                  onClick={() => handleResolve(selected._id)}
+                  className="bg-green-600 w-full py-2 mt-3 rounded-xl"
+                >
+                  Resolve
+                </button>
+              )}
+
+            <button
+              onClick={() => setSelected(null)}
+              className="bg-gray-700 w-full mt-2 py-2 rounded-xl"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
