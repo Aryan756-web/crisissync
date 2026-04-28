@@ -22,6 +22,20 @@ useEffect(() => {
     console.log("Connected:", socket.id);
   });
 
+  socket.on("newEmergency", (data) => {
+    setEmergencies((prev) => [data, ...prev]);
+    setPosition([data.location.lat, data.location.lng]);
+    setShouldFocus(true);
+    toast.error("🚨 New Emergency Triggered");
+  });
+
+  socket.on("emergencyUpdated", (updated) => {
+    setEmergencies((prev) =>
+      prev.map((e) => (e._id === updated._id ? updated : e))
+    );
+    toast.success("✅ Emergency Resolved");
+  });
+
   return () => socket.disconnect();
 }, []);
 
